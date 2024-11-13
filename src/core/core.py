@@ -8,6 +8,7 @@ from skmultiflow.trees import HoeffdingAdaptiveTreeClassifier as HT
 
 from src.detection.fixed_threshold import FixedThreshold
 from src.detection.interfaces.drift_detector import DriftDetector
+from src.detection.wrapper import LiteratureDetector
 from src.reaction.exchange import Exchange
 from src.reaction.interfaces.reactor import Reactor
 from src.ssl.ensemble import Ensemble
@@ -50,7 +51,13 @@ class Core:
         if reactor is None:
             reactor = Exchange
         self.ensemble: Ensemble = ensemble
-        self.detector: DriftDetector = detector
+        if issubclass(detector, DriftDetector):
+            self.detector: DriftDetector = detector
+        else:
+            self.detector = LiteratureDetector(
+                detector,
+                **{"detector_type": "chunk"}
+            )
         self.reactor: Reactor = reactor
         self.chunk_size = chunk_size
         self.metrics_calls = {}
@@ -81,7 +88,8 @@ class Core:
             parâmetros necessários para , por default None
         """
         self.ensemble = self.ensemble(ssl_algorithm, **params_training or {})
-        self.detector = self.detector(**params_detector or {})
+        if not isinstance(self.detector, LiteratureDetector):
+            self.detector = self.detector(**params_detector or {})
         self.reactor = self.reactor(**params_reactor or {})
 
     def configure_classifier(self, base_classifiers: list) -> None:
@@ -163,7 +171,7 @@ class Core:
                     **{'average':'macro'}
                 )
 
-            if self.ensemble_update(strategy, drift) and not std:
+            if self.ensemble_update(strategy, drift):
                 self.run_first_it(instances, classes)
 
         return self
@@ -192,6 +200,7 @@ class Core:
         solver = {
             "simple": len(self.ensemble.ensemble) < self.MAX_SIZE,
             "drift": len(self.ensemble.ensemble) < self.MAX_SIZE and drift,
+            "full": False,
         }
 
         return solver[selection]
@@ -230,7 +239,7 @@ class Core:
         if self.detector.detector_type == "chunk":
             return self.detector.detect(classes, y_pred)
 
-        return self.detector.detect(instances)
+        return self.detector.detect(instances, y_pred)
 
     def add_metrics(self, metric_name: str, metric_func: Callable) -> None:
         """

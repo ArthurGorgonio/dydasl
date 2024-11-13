@@ -27,7 +27,11 @@ COPY requirements.txt /exp/
 
 RUN pip install -r requirements.txt
 
-COPY . .
+COPY datasets/ .
+COPY src/ .
+COPY cpssds.py .
+COPY main.py .
+
 RUN chown -R $USR:$USR /exp
 
 USER $USR

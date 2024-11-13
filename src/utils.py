@@ -4,20 +4,29 @@ from typing import Any, Dict
 from numpy import ndarray, where
 
 
-def compare_labels(y_true: ndarray, y_pred: ndarray) -> ndarray:
+def compare_labels(
+    y_true: ndarray,
+    y_pred: ndarray,
+    human: bool = True
+) -> ndarray:
     """Função que computa quantos rótulos do chunk estão corretos.
 
     Args:
     ----
         - y_true: rótulos verdadeiros.
         - y_pred: rótulos preditos.
+        - human: Se True, 1 quando as classes são iguais e 0 quando são
+            diferentes. Se False, 0 quando as classes são iguais e 1
+            quando são diferentes.
 
     Returns:
     -------
         array preenchido com 1 quando as classes convergem e 0
         quando divergem.
     """
-    return where((y_true == y_pred), 1, 0)
+    if human:
+        return where((y_true == y_pred), 1, 0)
+    return where((y_true == y_pred), 0, 1)
 
 
 def validate_estimator(estimator):
@@ -135,5 +144,5 @@ class Log():
         args : Any
             Conteúdo a ser escrito no arquivo.
         """
-        with open(self.filename, 'a') as f:
+        with open(self.filename, 'a', encoding='utf-8') as f:
             f.writelines(args)

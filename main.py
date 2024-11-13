@@ -2,16 +2,28 @@ import os
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import cohen_kappa_score as kappa
-from sklearn.metrics import f1_score
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    cohen_kappa_score as kappa,
+)
 from skmultiflow.data import DataStream
+from skmultiflow.drift_detection import (
+    ADWIN,
+    DDM,
+    EDDM,
+    HDDM_A,
+    HDDM_W,
+    KSWIN,
+    PageHinkley,
+)
 
 from src.core.core import Core
 from src.detection import (
     FixedThreshold,
     Normal,
     Statistical,
+    LiteratureDetector,
 )
 from src.reaction import (
     Exchange,
@@ -23,9 +35,16 @@ from src.utils import Log
 
 if __name__ == '__main__':
     detectors = [
-        Statistical,
+        # Statistical,
         Normal,
-        FixedThreshold,
+        # FixedThreshold,
+        # ADWIN,
+        # DDM,
+        # EDDM,
+        # HDDM_A,
+        # HDDM_W,
+        # KSWIN,
+        # PageHinkley,
     ]
     reactors = [
         Exchange,
@@ -36,27 +55,19 @@ if __name__ == '__main__':
     # datasets = glob('datasets/*.csv')
     # datasets.sort()
     datasets = [
-        "Connect-4.csv",
-        "Electricity.csv",
-        "Fars.csv",
-        "ForestCover.csv",
-        "GEARS2C2D.csv",
-        "Poker.csv",
-        "Shuttle.csv",
-        "UG2C3D.csv",
+        'bank-full_converted.csv',
+        'iot-network_converted.csv'
     ]
 
-    statistics_strategy = [
+    training_modules = [
         "drift",
         "simple",
+        # "full",
     ]
 
-    # Train all ensemble with first chunk?
-    std = False
+    os.makedirs('running_current', exist_ok=True)
 
-    os.makedirs('running', exist_ok=True)
-
-    for statistics in statistics_strategy:
+    for tr_module in training_modules:
         for dataset in datasets:
             for reactor in reactors:
                 for detector in detectors:
@@ -64,7 +75,7 @@ if __name__ == '__main__':
                     dydasl.configure_params(
                         ssl_algorithm=SelfFlexCon,
                         params_training={
-                            "is_weight": True,
+                            'is_weight': True,
                         },
                         params_detector={},
                         params_reactor={
@@ -87,13 +98,17 @@ if __name__ == '__main__':
                         if "datasets/" in dataset
                         else "datasets/" + dataset
                     )
+                    dt_name = dataset.split(".", maxsplit=1)[0].split("/")[-1]
+
+                    if isinstance(dydasl.detector, LiteratureDetector):
+                        detection_name = f"-{dydasl.detector.drift_detector.__class__.__name__}"
+                    else:
+                        detection_name = f"-{dydasl.detector.__class__.__name__}"
+
                     Log().filename = {
-                        "data_name": dataset.split(".", maxsplit=1)[0].split("/")[
-                            -1
-                        ],
-                        "method_name": f"{statistics.upper()[0]}"
-                        f"-{type(dydasl.detector).__name__[0]}"
-                        f"-{type(dydasl.reactor).__name__[0]}",
+                        "data_name": dt_name,
+                        "method_name": f"{tr_module.upper()[0]}"
+                        f"W-{type(dydasl.reactor).__name__[0]}",
                     }
                     # depende do dataset
                     dim = dataframe.shape
@@ -112,4 +127,8 @@ if __name__ == '__main__':
                         allow_nan=True,
                     )
                     Log().write_archive_header()
-                    dydasl.run(stream, statistics, std=std)
+                    dydasl.run(
+                        stream,
+                        tr_module,
+                        std=True if tr_module.lower() == 'full' else False
+                    )

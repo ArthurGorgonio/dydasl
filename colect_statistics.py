@@ -87,7 +87,12 @@ def generate_metrics(metric: list) -> str:
 def get_dataset_names(data_path: str) -> set:
     """get dataset names to filter"""
     base_files = glob(f"{data_path}/*.txt")
-    dataset_names = {data.split("_")[-1].split(".")[0] for data in base_files}
+    dataset_names = {
+        data.split("_")[-2].split(".")[0]
+        if '_converted' in data else data.split("_")[-1].split(".")[0]
+        for data in base_files
+    }
+    print(dataset_names)
 
     return dataset_names
 
@@ -122,9 +127,10 @@ if __name__ == "__main__":
 
     print(args)
     datasets = get_dataset_names(args.results_path)
+    all_data = [[] for _ in range(len(args.all))]
 
     for dataset in datasets:
-        files = glob(f"{args.results_path}/*{dataset}.txt")
+        files = glob(f"{args.results_path}/*{dataset}*.txt")
         files.sort()
 
         data = [pd.DataFrame() for _ in range(len(args.all))]
@@ -154,3 +160,14 @@ if __name__ == "__main__":
                 sep="\t",
                 index=None,
             )
+
+        for metric, dframe in zip(all_data, data):
+            metric.append(dframe)
+
+    for metric_df, name in zip(all_data, names):
+        result = pd.concat(metric_df)
+        result.to_csv(
+            f"{args.results_path}/{name}/results_general.dat",
+            sep="\t",
+            index=None,
+        )

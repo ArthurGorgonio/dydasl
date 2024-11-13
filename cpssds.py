@@ -1,21 +1,17 @@
+from time import time
 from pandas import read_csv
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    f1_score,
+    cohen_kappa_score as kappa,
+)
 import numpy as np
 import scipy as sp
 from skmultiflow.data import DataStream
-from skmultiflow.bayes import NaiveBayes
 from skmultiflow.trees import HoeffdingTreeClassifier
 import statistics
-dataframe = read_csv("electricity.csv")
-dim = dataframe.shape
-array = dataframe.values
-Y = array[1 : dim[0] - 1, dim[1] - 1]
-X = array[1 : dim[0] - 1, 0 : dim[1] - 1]
-class_set = np.unique(Y)
-class_count = np.unique(Y).shape[0]  # number of classess
-chunk_size = 500
-Percentage = 0.1  # percentage of labeled data in each chunk 0.05 or 0.1
-significance_level = 0.98
+from src.utils import Log
 
 
 def Unlabeling_data(X_train, Y_train, Percentage, chunk_size, class_count):
@@ -33,17 +29,16 @@ def Unlabeling_data(X_train, Y_train, Percentage, chunk_size, class_count):
     return X_Unlabeled, X_L, Y_L, X_cal, Y_cal
 
 
-def Prediction_by_CP(num, classifier, X, Y, X_Unlabeled, class_count, sl):
+def Prediction_by_CP(classifier, X, Y, X_Unlabeled, class_count, sl):
     row = X_Unlabeled.shape[0]
     col = class_count
     p_values = np.zeros([row, col])
     labels = np.ones((row, col), dtype=bool)
-    alphas = NCM(num, classifier, X, Y, 1, class_count)
+    alphas = NCM(classifier, X, Y, 1, class_count)
     for elem in range(row):
         c = []
         for o in class_set:
             a_test = NCM(
-                num,
                 classifier,
                 np.array([X_Unlabeled[elem, :]]),
                 o,
@@ -57,56 +52,47 @@ def Prediction_by_CP(num, classifier, X, Y, X_Unlabeled, class_count, sl):
                 s = 0
             else:
                 s = p / idx.shape[0]
+                print(f's: {s}')
             c.append(s)
             if s < sl:
-                labels[elem, int(o)] = False
+                labels[elem, int(o) - 1] = False
         p_values[elem, :] = np.array(c)
     return p_values, labels
 
 
-def NCM(num, classifier, X, Y, t, class_count):
-    if num == 1:
-        if t == 1:
-            p = np.zeros([X.shape[0], 1])
-            alpha = np.zeros([X.shape[0], 1])
-            for g in range(X.shape[0]):
-                dic_vote = classifier.get_votes_for_instance(X[g, :])
-                vote = np.fromiter(dic_vote.values(), dtype=float)
-                vote_keys = np.fromiter(dic_vote.keys(), dtype=int)
-                Sum = np.sum(vote)
-                keys = np.argwhere(vote_keys == int(Y[g])).flatten()
-                if keys.size == 0:
-                    p[g] = (1) / (Sum + class_count)
-                else:
-                    for key, val in dic_vote.items():
-                        if key == float(Y[g]):
-                            p[g] = (val + 1) / (Sum + class_count)
-                alpha[g] = 1 - p[g]
-
-        else:
-
-            dic_vote = classifier.get_votes_for_instance(X[0, :])
+def NCM(classifier, X, Y, t, class_count):
+    if t == 1:
+        p = np.zeros([X.shape[0], 1])
+        alpha = np.zeros([X.shape[0], 1])
+        for g in range(X.shape[0]):
+            dic_vote = classifier.get_votes_for_instance(X[g, :])
             vote = np.fromiter(dic_vote.values(), dtype=float)
             vote_keys = np.fromiter(dic_vote.keys(), dtype=int)
             Sum = np.sum(vote)
-            keys = np.argwhere(vote_keys == int(Y)).flatten()
+            keys = np.argwhere(vote_keys == int(Y[g])).flatten()
             if keys.size == 0:
-                p = (1) / (Sum + class_count)
+                p[g] = (1) / (Sum + class_count)
             else:
                 for key, val in dic_vote.items():
-                    if key == float(Y):
-                        p = (val + 1) / (Sum + class_count)
-            alpha = 1 - p
+                    if key == float(Y[g]):
+                        p[g] = (val + 1) / (Sum + class_count)
+            alpha[g] = 1 - p[g]
 
     else:
-        if t == 1:
-            prediction = classifier.predict_proba(X)
-            P = np.max(prediction, axis=1)
-            alpha = 1 - P
-        elif t == 2:
-            prediction = classifier.predict_proba(X)
-            P = prediction[0, int(Y)]
-            alpha = 1 - P
+
+        dic_vote = classifier.get_votes_for_instance(X[0, :])
+        vote = np.fromiter(dic_vote.values(), dtype=float)
+        vote_keys = np.fromiter(dic_vote.keys(), dtype=int)
+        Sum = np.sum(vote)
+        keys = np.argwhere(vote_keys == int(Y)).flatten()
+        if keys.size == 0:
+            p = (1) / (Sum + class_count)
+        else:
+            for key, val in dic_vote.items():
+                if key == float(Y):
+                    p = (val + 1) / (Sum + class_count)
+        alpha = 1 - p
+
     return alpha
 
 
@@ -136,138 +122,211 @@ def Appending_informative_to_nextchunk(
     return X, Y
 
 
-################################ Main
-num = 1  # num=1 --> HT() num=2 --> NB()
-stream = DataStream(
-    X,
-    Y,
-    n_targets=class_count,
-    cat_features=None,
-    name=None,
-    allow_nan=False,
-)
-X_chunk1, Y_chunk1 = stream.next_sample(chunk_size)
-t = round(0.2 * X_chunk1.shape[0])
-X_test = X_chunk1[0: t - 1]
-Y_test = Y_chunk1[0: t - 1]
-X_train = X_chunk1[t: X_chunk1.shape[0] - 1]
-Y_train = Y_chunk1[t: X_chunk1.shape[0] - 1]
-num_samples = X.shape[0] - X_chunk1.shape[0]
-[X_U1, X_L1, Y_L1, X_cal1, Y_cal1] = Unlabeling_data(
-    X_train, Y_train, Percentage, chunk_size, class_count
-)
-"""
-Base Classifier selection
-"""
-if num == 1:
-    classifier = HoeffdingTreeClassifier()  # num=1
-    classifier.fit(X_L1, Y_L1, np.unique(Y))
-    sl = 1
-    a_file = open("Kolmogrov-HT.txt", "w")
-else:
-    classifier = NaiveBayes()  # num=2
-    classifier.fit(X_L1, Y_L1)
-    sl = 1
-    a_file = open("Kolmogrov-NB.txt", "w")
-A = []
-Y_pred = classifier.predict(X_test)
-A.append(accuracy_score(Y_test, Y_pred))
-Kolmogrov = []
-n_samples = 0
-i = 1
-while n_samples < num_samples and stream.has_more_samples():
-    p_values, labels = Prediction_by_CP(
-        num, classifier, X_cal1, Y_cal1, X_U1, class_count, sl
-    )
-    Informatives, Y_Informatives = Informatives_selection(
-        X_U1, p_values, labels, class_count
-    )
-    X_Currentchunk, Y_Currentchunk = stream.next_sample(chunk_size)
-    t = round(0.2 * X_Currentchunk.shape[0])
-    X_test = X_Currentchunk[0: t - 1]
-    Y_test = Y_Currentchunk[0: t - 1]
-    X_train = X_Currentchunk[t: X_Currentchunk.shape[0] - 1]
-    Y_train = Y_Currentchunk[t: X_Currentchunk.shape[0] - 1]
-    [
-        X_U2,
-        X_L2,
-        Y_L2,
-        X_cal2,
-        Y_cal2
-    ] = Unlabeling_data(
-        X_train, Y_train, Percentage, chunk_size, class_count
-    )
-    p_values1, labels1 = Prediction_by_CP(
-        num, classifier, X_cal1, Y_cal1, X_U2, class_count, sl
-    )
-    if X_Currentchunk.shape[0] >= chunk_size:
-        kst = []
-        class_set = np.unique(Y)
-        for h in class_set:
-            val = sp.stats.ks_2samp(p_values[:, int(h)], p_values1[:, int(h)])
-            kst.append(val[1])
-        mean_kst = statistics.mean(kst)
-        Kolmogrov.append(mean_kst)
-        print("chunk" + str(i) + " --> " + str(i + 1))
-        print("kolmogorov smirnov:    " + str(mean_kst))
-        if mean_kst < 0.05:  # if drift
-            if num == 1:
-                classifier = HoeffdingTreeClassifier()
-                classifier.fit(X_L2, Y_L2, np.unique(Y))
-            else:
-                classifier = NaiveBayes()
-                classifier.fit(X_L2, Y_L2)
-            X_L1 = X_L2.copy()
-            Y_L1 = Y_L2.copy()
-        else:  # if no drift
-            [
-                New_X_Labeled,
-                New_Y_Labeled,
-            ] = Appending_informative_to_nextchunk(
-                X_L2, Y_L2, Informatives, Y_Informatives
+def _evaluate_metrics(y_true, y_pred):
+    """
+    Computa cada uma das métricas adicionadas a partir do valor
+    predito pelo comitê.
+
+    Parameters
+    ----------
+    y_true : ndarray
+        Rótulos verdadeiros.
+    y_pred : ndarray
+        Rótulos preditos pelo comitê.
+    """
+
+    for func_name, metric in metrics_calls.items():
+
+        if func_name == "f1":
+            metrics[func_name].append(
+                metric(y_true, y_pred, average="macro")
             )
-            if num == 1:
-                classifier.partial_fit(
-                    New_X_Labeled, New_Y_Labeled, np.unique(Y)
-                )
-            else:
-                classifier.partial_fit(New_X_Labeled, New_Y_Labeled)
-            X_L1 = New_X_Labeled.copy()
-            Y_L1 = New_Y_Labeled.copy()
-    else:
-        [New_X_Labeled, New_Y_Labeled] = Appending_informative_to_nextchunk(
-            X_L2, Y_L2, Informatives, Y_Informatives
-        )
-        if num == 1:
-            classifier.partial_fit(New_X_Labeled, New_Y_Labeled, np.unique(Y))
         else:
-            classifier.partial_fit(New_X_Labeled, New_Y_Labeled)
-        X_L1 = New_X_Labeled.copy()
-        Y_L1 = New_Y_Labeled.copy()
-    X_cal1 = X_cal2.copy()
-    Y_cal1 = Y_cal2.copy()
-    X_U1 = X_U2.copy()
-    Y_pred = classifier.predict(X_test)
-    A.append(accuracy_score(Y_test, Y_pred))
-    n_samples += chunk_size
-    i += 1
-if num == 1:
-    ss_file = open("CPSSDS_HT.txt", "w")
-    np.savetxt(
-        ss_file, np.array(A), fmt="%.4f", delimiter="\t\t", newline="\n"
-    )
-    ss_file.close()
-else:
-    ss_file = open("CPSSDS_NB.txt", "w")
-    np.savetxt(
-        ss_file, np.array(A), fmt="%.4f", delimiter="\t\t", newline="\n"
-    )
-    ss_file.close()
-chunk_count = len(A)
-rounds = np.empty([1, chunk_count])
-np.savetxt(a_file, Kolmogrov, fmt="%.200f", delimiter="\t\t", newline="\n")
-a_file.close()
-print(np.array(A))
-Final_acc = np.mean(np.array(A))
-print("****Overall accuracy*****")
-print("Acc approach:   " + str(Final_acc))
+            metrics[func_name].append(
+                metric(y_true, y_pred)
+            )
+
+
+
+def _log_iteration_info(hits, processed, elapsed_time, drift):
+    # version = self.detector.__class__
+    iteration_info = {
+        "ensemble_size": 1,
+        "ensemble_hits": hits,
+        "drift_detected": drift,
+        "instances": processed,
+        "elapsed_time": elapsed_time,
+        "metrics": {
+            "acc": metrics["acc"][-1],
+            "f1": metrics["f1"][-1],
+            "kappa": metrics["kappa"][-1],
+        },
+    }
+    Log().write_archive_output(**iteration_info)
+
+################################ Main
+if __name__ == '__main__':
+    datasets = [
+        'bank-full_converted.csv',
+        'iot-network_converted.csv'
+    ]
+    chunk_size = 500
+    ini_lab = [0.1, 0.5]
+    significance_level = 0.98
+    metrics = {
+        'acc': [],
+        'f1': [],
+        'kappa': [],
+    }
+    metrics_calls = {
+        'acc': accuracy_score,
+        'f1': f1_score,
+        'kappa': kappa,
+    }
+
+    for Percentage in ini_lab:
+        for dataset in datasets:
+            dataframe = read_csv(f"datasets/{dataset}")
+            dim = dataframe.shape
+            array = dataframe.values
+            Y = array[1 : dim[0] - 1, dim[1] - 1]
+            X = array[1 : dim[0] - 1, 0 : dim[1] - 1]
+            class_set = np.unique(Y)
+            class_count = np.unique(Y).shape[0]  # number of classess
+
+            dt_name = dataset.split(".", maxsplit=1)[0].split("/")[-1]
+            Log().filename = {
+                "data_name": dt_name,
+                "method_name": f"CPSSDS-{Percentage}"
+            }
+
+            Log().write_archive_header()
+
+            stream = DataStream(
+                X,
+                Y,
+                n_targets=class_count,
+                cat_features=None,
+                name=None,
+                allow_nan=False,
+            )
+
+            start = time()
+
+            X_chunk1, Y_chunk1 = stream.next_sample(chunk_size)
+            t = round(0.2 * X_chunk1.shape[0])
+            X_test = X_chunk1[0: t - 1]
+            Y_test = Y_chunk1[0: t - 1]
+            X_train = X_chunk1[t: X_chunk1.shape[0] - 1]
+            Y_train = Y_chunk1[t: X_chunk1.shape[0] - 1]
+            num_samples = X.shape[0] - X_chunk1.shape[0]
+            [X_U1, X_L1, Y_L1, X_cal1, Y_cal1] = Unlabeling_data(
+                X_train, Y_train, Percentage, chunk_size, class_count
+            )
+
+            classifier = HoeffdingTreeClassifier()  # num=1
+            classifier.fit(X_L1, Y_L1, np.unique(Y))
+            sl = 1
+
+            elapsed_time = time() - start
+
+            Y_pred = classifier.predict(X_test)
+
+            _evaluate_metrics(Y_test, Y_pred)
+            hits = confusion_matrix(Y_test, Y_pred)
+            _log_iteration_info(
+                sum(hits.diagonal()),
+                stream.sample_idx,
+                elapsed_time,
+                False
+            )
+
+
+            Kolmogrov = []
+            n_samples = 0
+            i = 1
+            while n_samples < num_samples and stream.has_more_samples():
+                start = time()
+                p_values, labels = Prediction_by_CP(
+                    classifier, X_cal1, Y_cal1, X_U1, class_count, sl
+                )
+                Informatives, Y_Informatives = Informatives_selection(
+                    X_U1, p_values, labels, class_count
+                )
+                X_Currentchunk, Y_Currentchunk = stream.next_sample(chunk_size)
+                t = round(0.2 * X_Currentchunk.shape[0])
+                X_test = X_Currentchunk[0: t - 1]
+                Y_test = Y_Currentchunk[0: t - 1]
+                X_train = X_Currentchunk[t: X_Currentchunk.shape[0] - 1]
+                Y_train = Y_Currentchunk[t: X_Currentchunk.shape[0] - 1]
+                [
+                    X_U2,
+                    X_L2,
+                    Y_L2,
+                    X_cal2,
+                    Y_cal2
+                ] = Unlabeling_data(
+                    X_train, Y_train, Percentage, chunk_size, class_count
+                )
+                p_values1, labels1 = Prediction_by_CP(
+                    classifier, X_cal1, Y_cal1, X_U2, class_count, sl
+                )
+                if X_Currentchunk.shape[0] >= chunk_size:
+                    kst = []
+                    class_set = np.unique(Y)
+                    for h in class_set:
+                        val = sp.stats.ks_2samp(
+                            p_values[:, int(h)-1],
+                            p_values1[:, int(h)-1]
+                        )
+                        kst.append(val[1])
+                    mean_kst = statistics.mean(kst)
+                    Kolmogrov.append(mean_kst)
+                    if mean_kst < 0.05:  # if drift
+                        classifier = HoeffdingTreeClassifier()
+                        classifier.fit(X_L2, Y_L2, np.unique(Y))
+                        X_L1 = X_L2.copy()
+                        Y_L1 = Y_L2.copy()
+                    else:  # if no drift
+                        [
+                            New_X_Labeled,
+                            New_Y_Labeled,
+                        ] = Appending_informative_to_nextchunk(
+                            X_L2, Y_L2, Informatives, Y_Informatives
+                        )
+                        classifier.partial_fit(
+                            New_X_Labeled, New_Y_Labeled, np.unique(Y)
+                        )
+                        X_L1 = New_X_Labeled.copy()
+                        Y_L1 = New_Y_Labeled.copy()
+                else:
+                    [New_X_Labeled, New_Y_Labeled] = Appending_informative_to_nextchunk(
+                        X_L2, Y_L2, Informatives, Y_Informatives
+                    )
+                    classifier.partial_fit(
+                        New_X_Labeled,
+                        New_Y_Labeled,
+                        np.unique(Y)
+                    )
+                    X_L1 = New_X_Labeled.copy()
+                    Y_L1 = New_Y_Labeled.copy()
+                X_cal1 = X_cal2.copy()
+                Y_cal1 = Y_cal2.copy()
+                X_U1 = X_U2.copy()
+                Y_pred = classifier.predict(X_test)
+
+                elapsed_time = time() - start
+
+                hits = confusion_matrix(Y_test, Y_pred)
+                _evaluate_metrics(Y_test, Y_pred)
+
+                _log_iteration_info(
+                    sum(hits.diagonal()),
+                    stream.sample_idx,
+                    elapsed_time,
+                    mean_kst < 0.05
+                )
+
+                n_samples += chunk_size
+                i += 1
+            print(f'Finish {dataset} processing!!')
