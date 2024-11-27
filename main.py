@@ -2,11 +2,9 @@ import os
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import (
-    accuracy_score,
-    f1_score,
-    cohen_kappa_score as kappa,
-)
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import cohen_kappa_score as kappa
+from sklearn.metrics import f1_score
 from skmultiflow.data import DataStream
 from skmultiflow.drift_detection import (
     ADWIN,
@@ -18,33 +16,36 @@ from skmultiflow.drift_detection import (
     PageHinkley,
 )
 
-from src.core.core import Core
 from src.detection import (
     FixedThreshold,
+    LiteratureDetector,
     Normal,
     Statistical,
-    LiteratureDetector,
 )
+from src.dydasl.dydasl_core import Dydasl
 from src.reaction import (
     Exchange,
     Pareto,
     VolatileExchange,
 )
-from src.ssl import Ensemble, SelfFlexCon
+from src.ssl import (
+    Ensemble,
+    SelfFlexCon,
+)
 from src.utils import Log
 
 if __name__ == '__main__':
     detectors = [
-        # Statistical,
+        Statistical,
         Normal,
-        # FixedThreshold,
-        # ADWIN,
-        # DDM,
-        # EDDM,
-        # HDDM_A,
-        # HDDM_W,
-        # KSWIN,
-        # PageHinkley,
+        FixedThreshold,
+        ADWIN,
+        DDM,
+        EDDM,
+        HDDM_A,
+        HDDM_W,
+        KSWIN,
+        PageHinkley,
     ]
     reactors = [
         Exchange,
@@ -71,7 +72,7 @@ if __name__ == '__main__':
         for dataset in datasets:
             for reactor in reactors:
                 for detector in detectors:
-                    dydasl = Core(Ensemble, detector, reactor)
+                    dydasl = Dydasl(Ensemble, detector, reactor)
                     dydasl.configure_params(
                         ssl_algorithm=SelfFlexCon,
                         params_training={

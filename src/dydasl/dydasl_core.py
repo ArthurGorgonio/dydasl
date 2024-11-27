@@ -15,7 +15,7 @@ from src.ssl.ensemble import Ensemble
 from src.utils import Log
 
 
-class Core:
+class Dydasl:
     """
     Classe principal do DyDaSL, gerencia todo o fluxo de treinamento,
     detecção do drift e reação do drift

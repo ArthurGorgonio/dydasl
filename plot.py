@@ -1,11 +1,11 @@
 import argparse
-import operator
+# import operator
 from glob import glob
 from os.path import abspath
 from subprocess import CalledProcessError, run
 
-from pandas import DataFrame, read_csv
 import matplotlib.pyplot as plt
+from pandas import DataFrame, read_csv
 
 
 def get_dataset_names(data_path: str) -> set:
@@ -50,12 +50,12 @@ def generate_cd_diagram(
     try:
         run(' '.join(cmd), check=True, shell=True, stdout=True, stderr=True)
     except CalledProcessError as ex:
-        raise
         print(f"The {dt_name} not run. Probally all columns are equal!\n\n{ex}")
+        raise
 
 
 def create_plot(
-    df: DataFrame,
+    df_: DataFrame,
     colors: dict[str, dict[str, str]],
     title: str,
     plot_name: str,
@@ -68,7 +68,7 @@ def create_plot(
     else:
         plt.figure(figsize=(6.4, 4.8))
 
-    p = plt.boxplot(df, labels=df.axes[1].array, patch_artist=True)
+    p = plt.boxplot(df_, labels=df_.axes[1].array, patch_artist=True)
 
     for patch, color in zip(p["boxes"], colors):
         patch.set_facecolor(color)

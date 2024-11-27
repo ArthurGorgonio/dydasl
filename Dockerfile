@@ -37,4 +37,3 @@ RUN chown -R $USR:$USR /exp
 USER $USR
 
 CMD ["python", "main.py"]
-

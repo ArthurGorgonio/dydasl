@@ -1,16 +1,20 @@
+import statistics
 from time import time
+
+import numpy as np
+import scipy as sp
 from pandas import read_csv
 from sklearn.metrics import (
     accuracy_score,
+)
+from sklearn.metrics import cohen_kappa_score as kappa
+from sklearn.metrics import (
     confusion_matrix,
     f1_score,
-    cohen_kappa_score as kappa,
 )
-import numpy as np
-import scipy as sp
 from skmultiflow.data import DataStream
 from skmultiflow.trees import HoeffdingTreeClassifier
-import statistics
+
 from src.utils import Log
 
 
@@ -35,8 +39,10 @@ def Prediction_by_CP(classifier, X, Y, X_Unlabeled, class_count, sl):
     p_values = np.zeros([row, col])
     labels = np.ones((row, col), dtype=bool)
     alphas = NCM(classifier, X, Y, 1, class_count)
+
     for elem in range(row):
         c = []
+
         for o in class_set:
             a_test = NCM(
                 classifier,
@@ -48,15 +54,18 @@ def Prediction_by_CP(classifier, X, Y, X_Unlabeled, class_count, sl):
             idx = np.argwhere(Y == o).flatten()
             temp = alphas[idx]
             p = len(temp[temp >= a_test])
+
             if idx.shape[0] == 0:
                 s = 0
             else:
                 s = p / idx.shape[0]
                 print(f's: {s}')
             c.append(s)
+
             if s < sl:
                 labels[elem, int(o) - 1] = False
         p_values[elem, :] = np.array(c)
+
     return p_values, labels
 
 
@@ -64,12 +73,14 @@ def NCM(classifier, X, Y, t, class_count):
     if t == 1:
         p = np.zeros([X.shape[0], 1])
         alpha = np.zeros([X.shape[0], 1])
+
         for g in range(X.shape[0]):
             dic_vote = classifier.get_votes_for_instance(X[g, :])
             vote = np.fromiter(dic_vote.values(), dtype=float)
             vote_keys = np.fromiter(dic_vote.keys(), dtype=int)
             Sum = np.sum(vote)
             keys = np.argwhere(vote_keys == int(Y[g])).flatten()
+
             if keys.size == 0:
                 p[g] = (1) / (Sum + class_count)
             else:
@@ -85,6 +96,7 @@ def NCM(classifier, X, Y, t, class_count):
         vote_keys = np.fromiter(dic_vote.keys(), dtype=int)
         Sum = np.sum(vote)
         keys = np.argwhere(vote_keys == int(Y)).flatten()
+
         if keys.size == 0:
             p = (1) / (Sum + class_count)
         else:
@@ -100,14 +112,17 @@ def Informatives_selection(X_Unlabeled, p_values, labels, class_count):
     row = X_Unlabeled.shape[0]
     X = np.empty([1, X_Unlabeled.shape[1]])
     Y = np.empty([1])
+
     for elem in range(row):
         l = np.argwhere(labels[elem, :] == True).flatten()
+
         if len(l) == 1:
             pp = p_values[elem, l]
             X = np.append(X, [X_Unlabeled[elem, :]], axis=0)
             Y = np.append(Y, [l[0]], axis=0)
     Informatives = X[1: X.shape[0], :]
     Y_Informatives = Y[1: Y.shape[0]]
+
     return Informatives, Y_Informatives
 
 
@@ -119,6 +134,7 @@ def Appending_informative_to_nextchunk(
 ):
     X = np.append(X_Currentchunk_Labeled, Informatives, axis=0)
     Y = np.append(Y_Currentchunk_Labeled, Y_Informatives, axis=0)
+
     return X, Y
 
 
@@ -165,6 +181,7 @@ def _log_iteration_info(hits, processed, elapsed_time, drift):
     Log().write_archive_output(**iteration_info)
 
 ################################ Main
+
 if __name__ == '__main__':
     datasets = [
         'bank-full_converted.csv',
@@ -245,6 +262,7 @@ if __name__ == '__main__':
             Kolmogrov = []
             n_samples = 0
             i = 1
+
             while n_samples < num_samples and stream.has_more_samples():
                 start = time()
                 p_values, labels = Prediction_by_CP(
@@ -271,9 +289,11 @@ if __name__ == '__main__':
                 p_values1, labels1 = Prediction_by_CP(
                     classifier, X_cal1, Y_cal1, X_U2, class_count, sl
                 )
+
                 if X_Currentchunk.shape[0] >= chunk_size:
                     kst = []
                     class_set = np.unique(Y)
+
                     for h in class_set:
                         val = sp.stats.ks_2samp(
                             p_values[:, int(h)-1],
@@ -282,6 +302,7 @@ if __name__ == '__main__':
                         kst.append(val[1])
                     mean_kst = statistics.mean(kst)
                     Kolmogrov.append(mean_kst)
+
                     if mean_kst < 0.05:  # if drift
                         classifier = HoeffdingTreeClassifier()
                         classifier.fit(X_L2, Y_L2, np.unique(Y))
