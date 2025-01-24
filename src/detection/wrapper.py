@@ -29,24 +29,16 @@ class LiteratureDetector(DriftDetector):
             )
 
     def detect(self, chunk, y_pred) -> bool:
-        options = ['ADWIN', 'DDM', 'EDDM', 'HDDM_A', 'HDDM_W', 'PageHinkley']
+        labels: list = []
 
-        if self.__name__ in options:
-            return self._labels_detect(chunk, y_pred)
-
-        if self.__name__ == 'KSWIN':
-            return self._kswin(chunk)
-
-        return False
-
-
-    def _labels_detect(self, chunk, y_pred):
-        labels = []
-
-        if self.__name__ in ('ADWIN', 'PageHinkley'):
+        if self.__name__ in ('ADWIN', 'KSWIN', 'PageHinkley'):
             labels = compare_labels(chunk, y_pred)
         elif self.__name__ in ('DDM', 'EDDM', 'HDDM_A', 'HDDM_W'):
             labels = compare_labels(chunk, y_pred, False)
+
+        return self._labels_detect(labels)
+
+    def _labels_detect(self, labels):
 
         for i in labels:
             self.drift_detector.add_element(i)
@@ -55,18 +47,6 @@ class LiteratureDetector(DriftDetector):
                 self.drift = True
 
                 return self.drift
-
-        self.drift = False
-
-        return self.drift
-
-    def _kswin(self, chunk):
-        self.drift_detector.add_element(chunk)
-
-        if self.drift_detector.detected_change():
-            self.drift = True
-
-            return self.drift
 
         self.drift = False
 

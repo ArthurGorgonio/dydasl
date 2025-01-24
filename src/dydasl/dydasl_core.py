@@ -51,6 +51,7 @@ class Dydasl:
         if reactor is None:
             reactor = Exchange
         self.ensemble: Ensemble = ensemble
+
         if issubclass(detector, DriftDetector):
             self.detector: DriftDetector = detector
         else:
@@ -88,6 +89,7 @@ class Dydasl:
             parâmetros necessários para , por default None
         """
         self.ensemble = self.ensemble(ssl_algorithm, **params_training or {})
+
         if not isinstance(self.detector, LiteratureDetector):
             self.detector = self.detector(**params_detector or {})
         self.reactor = self.reactor(**params_reactor or {})
@@ -116,6 +118,7 @@ class Dydasl:
         chunk: DataStream,
         strategy: str = "simple",
         std: bool = False,
+        n_classes: ndarray = None,
     ):
         """
         Fluxo de execução do DyDaSL, loop para realizar a classificação
@@ -134,6 +137,7 @@ class Dydasl:
         instances, classes = chunk.next_sample(self.chunk_size)
 
         self.run_first_it(instances, classes)
+
         if std:
             while len(self.ensemble.ensemble) < self.MAX_SIZE:
                 self.run_first_it(instances, classes)
@@ -155,8 +159,8 @@ class Dydasl:
                     classes,
                 )
             elapsed_time = time() - start
-            self._evaluate_metrics(classes, y_pred)
-            hits = confusion_matrix(classes, y_pred)
+            self._evaluate_metrics(classes, y_pred, n_classes)
+            hits = confusion_matrix(classes, y_pred, labels=n_classes)
             self._log_iteration_info(
                 sum(hits.diagonal()),
                 chunk.sample_idx,
@@ -234,7 +238,13 @@ class Dydasl:
         y_pred: ndarray,
     ) -> bool:
         if self.detector.detector_type == "threshold":
-            return self.detector.detect(accuracy_score(classes, y_pred), None)
+            return self.detector.detect(
+                accuracy_score(
+                    classes,
+                    y_pred,
+                ),
+                None
+            )
 
         if self.detector.detector_type == "chunk":
             return self.detector.detect(classes, y_pred)
@@ -256,7 +266,12 @@ class Dydasl:
         self.metrics_calls[metric_name] = metric_func
         self.metrics[metric_name] = []
 
-    def _evaluate_metrics(self, y_true: ndarray, y_pred: ndarray):
+    def _evaluate_metrics(
+        self,
+        y_true: ndarray,
+        y_pred: ndarray,
+        n_classes: ndarray = None,
+    ):
         """
         Computa cada uma das métricas adicionadas a partir do valor
         predito pelo comitê.
@@ -270,18 +285,28 @@ class Dydasl:
         """
 
         for func_name, metric in self.metrics_calls.items():
-
-            if func_name == "f1":
+            if func_name == 'f1':
                 self.metrics[func_name].append(
-                    metric(y_true, y_pred, average="macro")
+                    metric(
+                        y_true,
+                        y_pred,
+                        average='macro',
+                        zero_division=1.0,
+                    )
                 )
-            else:
+            elif func_name == 'acc':
                 self.metrics[func_name].append(
                     metric(y_true, y_pred)
                 )
+            else:
+                if all(y_true == y_pred):
+                    self.metrics[func_name].append(1.0)
+                else:
+                    self.metrics[func_name].append(
+                        metric(y_true, y_pred, labels=n_classes)
+                    )
 
     def _log_iteration_info(self, hits, processed, elapsed_time):
-        # version = self.detector.__class__
         iteration_info = {
             "ensemble_size": len(self.ensemble.ensemble),
             "ensemble_hits": hits,

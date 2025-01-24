@@ -24,13 +24,16 @@ def compare_labels(
         array preenchido com 1 quando as classes convergem e 0
         quando divergem.
     """
+
     if human:
         return where((y_true == y_pred), 1, 0)
+
     return where((y_true == y_pred), 0, 1)
 
 
 def validate_estimator(estimator):
     """Make sure that an estimator implements the necessary methods."""
+
     if not hasattr(estimator, "predict_proba"):
         msg = "base_estimator ({}) should implement predict_proba!"
         raise ValueError(msg.format(type(estimator).__name__))
@@ -49,12 +52,15 @@ class Log():
     """
     _instance = None
     __pattern = '%Y-%m-%d-%H-%M_%S'
+    _actual_time: datetime
 
     def __time(self):
         self._actual_time = datetime.utcnow().strftime(self.__pattern)
 
     @property
     def filename(self):
+        """Property filename to make it imutable"""
+
         return self.__filename
 
     @filename.setter
@@ -62,11 +68,13 @@ class Log():
         self.__time()
         self.__data_name = param.get("data_name", None)
         self.__method_name = param.get("method_name", None)
-        self.__filename = f"running/{self.__method_name}_{self.__data_name}.txt"
+        data_name = f'{self.__method_name}_{self.__data_name}.txt'
+        self.__filename = f"test_new_dataset/{data_name}"
 
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
+
         return cls._instance
 
     def write_archive_header(self):

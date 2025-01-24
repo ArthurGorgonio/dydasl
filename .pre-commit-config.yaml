@@ -27,5 +27,5 @@ repos:
       name: PyLint
       entry: pylint
       always_run: true
-      language: system
+      language: python
       types: [python]

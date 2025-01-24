@@ -13,8 +13,8 @@ class Ensemble:
     """
 
     def __init__(self, ssl_algorithm: callable, **params: Dict[str, Any]):
-        self.ensemble = []
-        self.weights = []
+        self.ensemble: list[str] = []
+        self.weights: list = []
         self.is_weights = params.get('is_weight', False)
         self.ssl_algorithm = ssl_algorithm
         self.ssl_params = params.get('ssl_params', {})

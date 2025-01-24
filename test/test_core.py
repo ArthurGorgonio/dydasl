@@ -54,13 +54,20 @@ class ReactorMock(Mock):
 
 
 class MetricsMock(Mock):
-    def accuracy_score(self, y_true, y_pred):
+    def accuracy_score(self, y_true, y_pred, nclasses=''):
         return 1.0
 
-    def f1_score(self, y_true, y_pred, average=''):
+    def f1_score(
+        self,
+        y_true,
+        y_pred,
+        average='',
+        nclasses='',
+        zero_division=1.0,
+    ):
         return 1.0
 
-    def kappa(self, y_true, y_pred):
+    def kappa(self, y_true, y_pred, nclasses=''):
         return 1.0
 
 
@@ -193,14 +200,14 @@ class TestDydasl(TestCase):
     ):
         evaluate = MetricsMock()
         self.core.add_metrics('acc', evaluate.accuracy_score)
-        self.core.add_metrics('f1', evaluate.f1_score)
+        #self.core.add_metrics('f1', evaluate.f1_score)
 
         y_true = [1, 1, 0, 0, 0, 1]
         y_pred = [1, 1, 0, 0, 0, 1]
 
-        self.core._evaluate_metrics(y_true, y_pred)
+        self.core._evaluate_metrics(y_true, y_pred, 2)
 
-        self.assertEqual(self.core.metrics, {'acc': [1.0], 'f1': [1.0]})
+        self.assertEqual(self.core.metrics, {'acc': [1.0]})
 
     @patch('src.dydasl.dydasl_core.accuracy_score')
     @patch('src.dydasl.dydasl_core.confusion_matrix')
@@ -281,8 +288,8 @@ class TestDydasl(TestCase):
         self.core.add_metrics('f1', metrics.f1_score)
         self.core.add_metrics('kappa', metrics.kappa)
 
-        y_true = [1, 1, 0, 0, 0, 1]
-        y_pred = [1, 1, 0, 0, 0, 1]
+        y_true = array([1, 1, 0, 0, 0, 1])
+        y_pred = array([1, 1, 0, 0, 0, 1])
 
         self.core._evaluate_metrics(y_true, y_pred)
 
